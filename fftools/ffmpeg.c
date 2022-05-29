@@ -1287,6 +1287,8 @@ static void do_video_out(OutputFile *of,
         ost->frame_number++;
     }
 
+   if (!ost->last_frame)
+        ost->last_frame = av_frame_alloc();
     av_frame_unref(ost->last_frame);
     if (next_picture)
         av_frame_move_ref(ost->last_frame, next_picture);
@@ -1340,6 +1342,12 @@ static int reap_filters(int flush)
         if (av_buffersink_get_type(filter) == AVMEDIA_TYPE_AUDIO)
             init_output_stream_wrapper(ost, NULL, 1);
 
+        if (!ost->pkt && !(ost->pkt = av_packet_alloc())) {
+            return AVERROR(ENOMEM);
+        }
+        if (!ost->filtered_frame && !(ost->filtered_frame = av_frame_alloc())) {
+            return AVERROR(ENOMEM);
+        }
         filtered_frame = ost->filtered_frame;
 
         while (1) {
@@ -3176,6 +3184,8 @@ static int init_output_stream(OutputStream *ost, AVFrame *frame,
                     ost->file_index, ost->index);
             return ret;
         }
+        //save bitrate
+        ost->now_bitrate = ost->enc_ctx->bit_rate;
         if (ost->enc->type == AVMEDIA_TYPE_AUDIO &&
             !(ost->enc->capabilities & AV_CODEC_CAP_VARIABLE_FRAME_SIZE))
             av_buffersink_set_frame_size(ost->filter->filter,
@@ -4228,6 +4238,83 @@ static int transcode_from_filter(FilterGraph *graph, InputStream **best_ist)
 
     return 0;
 }
+// 'low': ((320, 240), (480, 270)),  # resolution for 4:3 and 16:9
+// 'medium': ((640, 480), (960, 540)),
+// 'high': ((1296, 972), (1640, 922)),
+// 'ultra_high': ((1640, 1232), (1920, 1080)),
+static int downgrade_width(int width, int height){
+    if(width*3 == height*4){
+        if(width>=640) return 640;
+        if(width>=320) return 320;
+    }
+    else{
+        if(width>=960) return 960;
+        if(width>=480) return 480;
+    }
+    return 320;
+}
+
+static int downgrade_height(int width, int height){
+    if(width*3 == height*4){
+        if(height>=480) return 480;
+        if(height>=240) return 240;
+    }
+    else{
+        if(height>=540) return 540;
+        if(height>=270) return 270;
+    }
+    return 240;
+}
+
+static int bitrate_by_width(int width){
+    if(width <= 480) return 400*1000;
+    if(width <= 640) return 800*1000;
+    if(width <= 960) return 1200*1000;
+    return 2000*1000;
+}
+
+static void downgrade(OutputStream* ost, int width, int height){
+    if(width == ost->width){
+        av_log(NULL, AV_LOG_DEBUG, "No width can downgrade.\n");
+        return;
+    }
+
+
+    ost->width = width;
+    ost->height = height;
+    int frame_count = ost->frame_number;
+    AVRational time_base =  ost->enc_ctx->time_base;
+    AVRational framerate =  ost->enc_ctx->framerate;
+    int pix_fmt = ost->enc_ctx->pix_fmt;
+
+    //int ret = 
+    avcodec_close(ost->enc_ctx);
+    avcodec_free_context(&ost->enc_ctx);
+    ost->enc_ctx = avcodec_alloc_context3(ost->enc);
+    ost->enc_ctx->bit_rate = bitrate_by_width(width);
+    ost->enc_ctx->width = width;
+    ost->enc_ctx->height = height;
+    ost->enc_ctx->time_base = time_base;
+    ost->enc_ctx->framerate = framerate;
+    ost->enc_ctx->pix_fmt = pix_fmt;
+    ost->ref_par = avcodec_parameters_alloc();
+    ost->enc_ctx->frame_number = frame_count;
+    av_frame_free(&ost->filtered_frame);
+    ost->filtered_frame = NULL;
+    av_frame_free(&ost->last_frame);
+    ost->last_frame = NULL;
+
+    FilterGraph *fg = filtergraphs[0];
+    fg->outputs[0]->width = width;
+    fg->outputs[0]->height = height;
+    configure_filtergraph(fg);
+
+    ost->initialized = 0;
+    ost->last_dropped = 0;
+    ost->next_force_key = 1;
+        
+    output_files[ost->file_index]->ctx->resetSSRC = 1;
+}
 
 /**
  * Run a single step of transcoding.
@@ -4259,6 +4346,34 @@ static int transcode_step(void)
                 return ret;
             }
         }
+    }
+
+    if(ost-> now_bitrate != 0){
+        OutputFile* out_file = output_files[ost->file_index];
+            AVFormatContext* fc = out_file->ctx;
+            if(fc && fc->pb ){
+                int64_t max_bitrate = avio_max_bitrate(fc->pb);
+                 // %lld% \n", (long long)max_bitrate);
+                //当前的超过可接收端的最大限制
+                if(max_bitrate < ost->now_bitrate && max_bitrate != 0){
+                    av_log(NULL, AV_LOG_DEBUG, "zzh max_bitrate= %lld% \n", (long long)max_bitrate);
+                    int w = ost->width;
+                    int h = ost->height;
+                    while (1)
+                    {
+                       int tempw = w;
+                       if(downgrade_width(tempw, h) == w)
+                            break;
+           
+                       w = downgrade_width(tempw, h);
+                       h = downgrade_height(tempw, h);
+                       if(bitrate_by_width(w) <= max_bitrate){
+                           break;
+                       }
+                    }
+                    downgrade(ost, w, h);
+                } 
+            }
     }
 
     if (ost->filter && ost->filter->graph->graph) {

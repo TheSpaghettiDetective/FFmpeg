@@ -435,6 +435,14 @@ int64_t ffurl_seek(URLContext *h, int64_t pos, int whence)
     return ret;
 }
 
+int64_t ffurl_max_bitrate(URLContext *h)
+{
+    if(!h->prot->url_max_bitrate){
+        return 0;
+    }
+    return h->prot->url_max_bitrate(h);
+}
+
 int ffurl_closep(URLContext **hh)
 {
     URLContext *h= *hh;
@@ -489,6 +497,13 @@ int avio_check(const char *url, int flags)
     ffurl_close(h);
     return ret;
 }
+
+int64_t avio_max_bitrate(AVIOContext *s){
+    if(!s->max_bitrate)
+        return 0 ;
+    return  s->max_bitrate(s->opaque);
+}
+
 
 int ffurl_move(const char *url_src, const char *url_dst)
 {

@@ -25,6 +25,7 @@
  */
 
 #include "libavutil/parseutils.h"
+#include "libavutil/intreadwrite.h"
 #include "libavutil/avstring.h"
 #include "libavutil/opt.h"
 #include "avformat.h"
@@ -62,6 +63,7 @@ typedef struct RTPContext {
     char *fec_options_str;
     int64_t rw_timeout;
     char *localaddr;
+    int64_t bitrate_max;
 } RTPContext;
 
 #define OFFSET(x) offsetof(RTPContext, x)
@@ -432,8 +434,50 @@ static int rtp_read(URLContext *h, uint8_t *buf, int size)
     }
 }
 
+static int64_t get_remb(const uint8_t *buf, int size){
+    if(size < 20) return 0;
+    if(buf[12] != 'R' || buf[13] != 'E' || buf[14] != 'M' || buf[15] != 'B'){
+        return 0;
+    }
+
+    uint32_t exp  = (AV_RB8(buf + 17) >> 2) & 0x3F;
+    uint32_t mantissa = (AV_RB8(buf + 17) & 0x03) << 16;
+    mantissa += AV_RB16(buf + 18);
+    return ((int64_t)mantissa << exp);
+}
+
+static int rtp_read_rtcp_noblock(URLContext *h)
+{
+
+    RTPContext *s = h->priv_data;
+    int len, n;
+    struct pollfd p[1] = {{s->rtcp_fd, POLLIN, 0}};
+    n = poll(p, 1, 0);
+    if (n > 0) {
+        if (p[0].revents & POLLIN){
+            char buff[1024];
+            len = recv(p[0].fd, buff, 1024, 0);
+            // av_log(h, AV_LOG_ERROR, "______ recv %d\n", len);
+            if(len>0){
+                s->bitrate_max = get_remb(buff, len);
+                // if(remb != 0){
+                //      av_log(h, AV_LOG_ERROR, "______ remb %lld\n", remb);
+                // }
+            }
+        }
+    }
+    return 0;
+}
+
+static int64_t rtp_get_bitrate_max(URLContext *h){
+    RTPContext *s = h->priv_data;
+    return s->bitrate_max;
+}
+
 static int rtp_write(URLContext *h, const uint8_t *buf, int size)
 {
+    rtp_read_rtcp_noblock(h);
+
     RTPContext *s = h->priv_data;
     int ret, ret_fec;
     URLContext *hd;
@@ -575,6 +619,7 @@ const URLProtocol ff_rtp_protocol = {
     .url_close                 = rtp_close,
     .url_get_file_handle       = rtp_get_file_handle,
     .url_get_multi_file_handle = rtp_get_multi_file_handle,
+    .url_max_bitrate           = rtp_get_bitrate_max,
     .priv_data_size            = sizeof(RTPContext),
     .flags                     = URL_PROTOCOL_FLAG_NETWORK,
     .priv_data_class           = &rtp_class,

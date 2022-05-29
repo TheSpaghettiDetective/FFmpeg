@@ -1770,6 +1770,9 @@ static OutputStream *new_video_stream(OptionsContext *o, AVFormatContext *oc, in
             av_log(NULL, AV_LOG_FATAL, "Invalid frame size: %s.\n", frame_size);
             exit_program(1);
         }
+        //save now width and height
+        ost->width = video_enc->width;
+        ost->height = video_enc->height;
 
         MATCH_PER_STREAM_OPT(frame_pix_fmts, str, frame_pix_fmt, oc, st);
         if (frame_pix_fmt && *frame_pix_fmt == '+') {

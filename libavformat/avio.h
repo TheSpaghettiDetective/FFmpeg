@@ -316,6 +316,7 @@ typedef struct AVIOContext {
      * Read-only statistic of bytes written for this AVIOContext.
      */
     int64_t bytes_written;
+    int64_t (*max_bitrate)(void *opaque);
 } AVIOContext;
 
 /**
@@ -415,6 +416,15 @@ AVIOContext *avio_alloc_context(
                   int (*read_packet)(void *opaque, uint8_t *buf, int buf_size),
                   int (*write_packet)(void *opaque, uint8_t *buf, int buf_size),
                   int64_t (*seek)(void *opaque, int64_t offset, int whence));
+AVIOContext *avio_alloc_context2(
+                  unsigned char *buffer,
+                  int buffer_size,
+                  int write_flag,
+                  void *opaque,
+                  int (*read_packet)(void *opaque, uint8_t *buf, int buf_size),
+                  int (*write_packet)(void *opaque, uint8_t *buf, int buf_size),
+                  int64_t (*seek)(void *opaque, int64_t offset, int whence),
+                  int64_t (*max_bitrate)(void *opaque));
 
 /**
  * Free the supplied IO context and everything associated with it.
@@ -833,4 +843,6 @@ int avio_accept(AVIOContext *s, AVIOContext **c);
  *           < 0 for an AVERROR code
  */
 int avio_handshake(AVIOContext *c);
+
+int64_t avio_max_bitrate(AVIOContext *h);
 #endif /* AVFORMAT_AVIO_H */
