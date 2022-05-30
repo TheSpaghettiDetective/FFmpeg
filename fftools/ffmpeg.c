@@ -4268,9 +4268,9 @@ static int downgrade_height(int width, int height){
 
 static int bitrate_by_width(int width){
     if(width <= 480) return 400*1000;
-    if(width <= 640) return 800*1000;
-    if(width <= 960) return 1200*1000;
-    return 2000*1000;
+    if(width <= 640) return 1200*1000;
+    if(width <= 960) return 1500*1000;
+    return 4000*1000;
 }
 
 static void downgrade(OutputStream* ost, int width, int height){
@@ -4278,7 +4278,6 @@ static void downgrade(OutputStream* ost, int width, int height){
         av_log(NULL, AV_LOG_DEBUG, "No width can downgrade.\n");
         return;
     }
-
 
     ost->width = width;
     ost->height = height;
@@ -4354,25 +4353,27 @@ static int transcode_step(void)
             if(fc && fc->pb ){
                 int64_t max_bitrate = avio_max_bitrate(fc->pb);
                  // %lld% \n", (long long)max_bitrate);
-                //当前的超过可接收端的最大限制
-                if(max_bitrate < ost->now_bitrate && max_bitrate != 0){
-                    av_log(NULL, AV_LOG_DEBUG, "zzh max_bitrate= %lld% \n", (long long)max_bitrate);
-                    int w = ost->width;
-                    int h = ost->height;
-                    while (1)
-                    {
-                       int tempw = w;
-                       if(downgrade_width(tempw, h) == w)
+                if(max_bitrate <= 4000*1000){
+                    //当前的超过可接收端的最大限制
+                    if(max_bitrate < ost->now_bitrate && max_bitrate != 0){
+                        av_log(NULL, AV_LOG_DEBUG, "zzh max_bitrate= %lld% \n", (long long)max_bitrate);
+                        int w = ost->width;
+                        int h = ost->height;
+                        while (1)
+                        {
+                        int tempw = w;
+                        if(downgrade_width(tempw, h) == w)
+                                break;
+            
+                        w = downgrade_width(tempw, h);
+                        h = downgrade_height(tempw, h);
+                        if(bitrate_by_width(w) <= max_bitrate){
                             break;
-           
-                       w = downgrade_width(tempw, h);
-                       h = downgrade_height(tempw, h);
-                       if(bitrate_by_width(w) <= max_bitrate){
-                           break;
-                       }
-                    }
-                    downgrade(ost, w, h);
-                } 
+                        }
+                        }
+                        downgrade(ost, w, h);
+                    } 
+                }
             }
     }
 
