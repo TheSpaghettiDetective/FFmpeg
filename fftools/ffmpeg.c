@@ -1274,10 +1274,13 @@ static void do_video_out(OutputFile *of,
             ost->dropped_keyframe = 0;
         }
 
+        forced_keyframe = forced_keyframe || ost->next_force_key;
         if (forced_keyframe) {
+            ost->next_force_key = 0;
             in_picture->pict_type = AV_PICTURE_TYPE_I;
             av_log(NULL, AV_LOG_DEBUG, "Forced keyframe at time %f\n", pts_time);
         }
+
 
         ret = encode_frame(of, ost, in_picture);
         if (ret < 0)
@@ -4244,24 +4247,24 @@ static int transcode_from_filter(FilterGraph *graph, InputStream **best_ist)
 // 'ultra_high': ((1640, 1232), (1920, 1080)),
 static int downgrade_width(int width, int height){
     if(width*3 == height*4){
-        if(width>=640) return 640;
-        if(width>=320) return 320;
+        if(width>640) return 640;
+        if(width>320) return 320;
     }
     else{
-        if(width>=960) return 960;
-        if(width>=480) return 480;
+        if(width>960) return 960;
+        if(width>480) return 480;
     }
     return 320;
 }
 
 static int downgrade_height(int width, int height){
     if(width*3 == height*4){
-        if(height>=480) return 480;
-        if(height>=240) return 240;
+        if(height>480) return 480;
+        if(height>240) return 240;
     }
     else{
-        if(height>=540) return 540;
-        if(height>=270) return 270;
+        if(height>540) return 540;
+        if(height>270) return 270;
     }
     return 240;
 }
@@ -4296,6 +4299,7 @@ static void downgrade(OutputStream* ost, int width, int height){
     ost->enc_ctx->time_base = time_base;
     ost->enc_ctx->framerate = framerate;
     ost->enc_ctx->pix_fmt = pix_fmt;
+    ost->enc_ctx->gop_size = 12;
     ost->ref_par = avcodec_parameters_alloc();
     ost->enc_ctx->frame_number = frame_count;
     av_frame_free(&ost->filtered_frame);
@@ -4311,8 +4315,21 @@ static void downgrade(OutputStream* ost, int width, int height){
     ost->initialized = 0;
     ost->last_dropped = 0;
     ost->next_force_key = 1;
+    ost->forced_kf_ref_pts = AV_NOPTS_VALUE;
         
     output_files[ost->file_index]->ctx->resetSSRC = 1;
+}
+
+
+static void change_bitrate(OutputStream * ost, int64_t to_bitrate){
+    avcodec_flush_buffers(ost->enc_ctx);
+    avcodec_close(ost->enc_ctx);
+    ost->enc_ctx->bit_rate = to_bitrate;
+    avcodec_open2(ost->enc_ctx, ost->enc, NULL);
+    avcodec_parameters_from_context(ost->st->codecpar, ost->enc_ctx);
+    init_output_bsfs(ost);
+    ost->next_force_key = 1;
+    ost->now_bitrate = to_bitrate;
 }
 
 /**
@@ -4347,33 +4364,47 @@ static int transcode_step(void)
         }
     }
 
-    if(ost-> now_bitrate != 0){
+    //to MrJiang only deal width == 640
+    if(ost-> now_bitrate != 0 && ost->width == 640){
         OutputFile* out_file = output_files[ost->file_index];
             AVFormatContext* fc = out_file->ctx;
             if(fc && fc->pb ){
                 int64_t max_bitrate = avio_max_bitrate(fc->pb);
-                 // %lld% \n", (long long)max_bitrate);
-                if(max_bitrate <= 4000*1000){
-                    //当前的超过可接收端的最大限制
-                    if(max_bitrate < ost->now_bitrate && max_bitrate != 0){
-                        av_log(NULL, AV_LOG_DEBUG, "zzh max_bitrate= %lld% \n", (long long)max_bitrate);
-                        int w = ost->width;
-                        int h = ost->height;
-                        while (1)
-                        {
-                        int tempw = w;
-                        if(downgrade_width(tempw, h) == w)
-                                break;
-            
-                        w = downgrade_width(tempw, h);
-                        h = downgrade_height(tempw, h);
-                        if(bitrate_by_width(w) <= max_bitrate){
-                            break;
-                        }
-                        }
-                        downgrade(ost, w, h);
-                    } 
+                if(max_bitrate !=0){
+                    if(max_bitrate >= 2000*1000) max_bitrate = 2000*1000;
+                    if(max_bitrate <= 100*1000) max_bitrate = 100*1000;
+
+                    int64_t diff = max_bitrate - ost->now_bitrate;
+                    
+                    if(abs(diff) >= ost->now_bitrate*0.2 && av_gettime_relative() - ost->last_change_fps > 10*1000000){
+                        ost->last_change_fps = av_gettime_relative();
+                        change_bitrate(ost, max_bitrate);
+                        av_log(NULL, AV_LOG_ERROR, "zzh max_bitrate= %lld diff =%lld  time=%lld\n", (long long)max_bitrate, diff, av_gettime_relative());
+                    }
                 }
+
+                // %lld% \n", (long long)max_bitrate);
+                // if(max_bitrate <= 4000*1000){
+                //     //当前的超过可接收端的最大限制
+                //     if(max_bitrate < ost->now_bitrate && max_bitrate != 0){
+                //         av_log(NULL, AV_LOG_DEBUG, "zzh max_bitrate= %lld% \n", (long long)max_bitrate);
+                //         int w = ost->width;
+                //         int h = ost->height;
+                //         while (1)
+                //         {
+                //         int tempw = w;
+                //         if(downgrade_width(tempw, h) == w)
+                //                 break;
+            
+                //         w = downgrade_width(tempw, h);
+                //         h = downgrade_height(tempw, h);
+                //         if(bitrate_by_width(w) <= max_bitrate){
+                //             break;
+                //         }
+                //         }
+                //         downgrade(ost, w, h);
+                //     } 
+                // }
             }
     }
 

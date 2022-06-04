@@ -64,6 +64,7 @@ typedef struct RTPContext {
     int64_t rw_timeout;
     char *localaddr;
     int64_t bitrate_max;
+    uint8_t  fractionLost;
 } RTPContext;
 
 #define OFFSET(x) offsetof(RTPContext, x)
@@ -436,6 +437,13 @@ static int rtp_read(URLContext *h, uint8_t *buf, int size)
 
 static int64_t get_remb(const uint8_t *buf, int size){
     if(size < 20) return 0;
+
+    if(buf[1] ==  RTCP_RR){  //rtcp rr
+        uint32_t fraction = avio_rb32(buf + 16);
+        uint8_t loss = fraction >> 24;
+        av_log(NULL, AV_LOG_ERROR, "______ recv loss %f\n",  (loss*1.0)/256);
+    }
+
     if(buf[12] != 'R' || buf[13] != 'E' || buf[14] != 'M' || buf[15] != 'B'){
         return 0;
     }

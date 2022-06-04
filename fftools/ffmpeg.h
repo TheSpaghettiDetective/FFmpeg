@@ -582,6 +582,7 @@ typedef struct OutputStream {
     int width;  //add by zzh
     int height; //add by zzh
     int64_t now_bitrate; //add by zzh
+    int64_t last_change_fps;
 } OutputStream;
 
 typedef struct OutputFile {
