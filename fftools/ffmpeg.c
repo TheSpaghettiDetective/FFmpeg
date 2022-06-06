@@ -3189,6 +3189,8 @@ static int init_output_stream(OutputStream *ost, AVFrame *frame,
         }
         //save bitrate
         ost->now_bitrate = ost->enc_ctx->bit_rate;
+        ost->maxrate = ost->enc_ctx->rc_max_rate;
+        ost->minrate = ost->enc_ctx ->rc_min_rate;
         if (ost->enc->type == AVMEDIA_TYPE_AUDIO &&
             !(ost->enc->capabilities & AV_CODEC_CAP_VARIABLE_FRAME_SIZE))
             av_buffersink_set_frame_size(ost->filter->filter,
@@ -4332,6 +4334,15 @@ static void change_bitrate(OutputStream * ost, int64_t to_bitrate){
     ost->now_bitrate = to_bitrate;
 }
 
+
+static int64_t getMaxBitrate(int width, int height){
+    return ((width*height)/64)*20*20;
+}
+
+static int64_t  getMinBitrate(int width, int height){
+    return ((width*height)/64)*20;
+}
+
 /**
  * Run a single step of transcoding.
  *
@@ -4364,19 +4375,21 @@ static int transcode_step(void)
         }
     }
 
-    //to MrJiang only deal width == 640
-    if(ost-> now_bitrate != 0 && ost->width == 640){
+    //to MrJiang only deal
+    if(ost-> now_bitrate != 0){
+        if(ost->maxrate == 0) ost->maxrate = getMaxBitrate(ost->width,  ost->height);
+        if(ost->minrate == 0) ost->minrate = getMinBitrate(ost->width,  ost->height);
         OutputFile* out_file = output_files[ost->file_index];
             AVFormatContext* fc = out_file->ctx;
             if(fc && fc->pb ){
                 int64_t max_bitrate = avio_max_bitrate(fc->pb);
                 if(max_bitrate !=0){
-                    if(max_bitrate >= 2000*1000) max_bitrate = 2000*1000;
-                    if(max_bitrate <= 100*1000) max_bitrate = 100*1000;
+                    if(max_bitrate >= ost->maxrate) max_bitrate = ost->maxrate;
+                    if(max_bitrate <= ost->minrate) max_bitrate = ost->minrate;
 
                     int64_t diff = max_bitrate - ost->now_bitrate;
                     
-                    if(abs(diff) >= ost->now_bitrate*0.2 && av_gettime_relative() - ost->last_change_fps > 10*1000000){
+                    if(abs(diff) >= ost->now_bitrate*0.2 && av_gettime_relative() - ost->last_change_fps > 3*1000000){
                         ost->last_change_fps = av_gettime_relative();
                         change_bitrate(ost, max_bitrate);
                         av_log(NULL, AV_LOG_ERROR, "zzh max_bitrate= %lld diff =%lld  time=%lld\n", (long long)max_bitrate, diff, av_gettime_relative());
