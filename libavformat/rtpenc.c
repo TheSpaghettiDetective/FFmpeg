@@ -98,6 +98,11 @@ static int rtp_write_header(AVFormatContext *s1)
     int n, ret = AVERROR(EINVAL);
     AVStream *st;
 
+    if(s1->resetSSRC){
+        s->ssrc =  s->ssrc + 1;
+        s1->resetSSRC = 0;
+    }
+
     if (s1->nb_streams != 1) {
         av_log(s1, AV_LOG_ERROR, "Only one stream supported in the RTP muxer\n");
         return AVERROR(EINVAL);

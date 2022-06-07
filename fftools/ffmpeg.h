@@ -581,7 +581,10 @@ typedef struct OutputStream {
     int next_force_key;
     int width;  //add by zzh
     int height; //add by zzh
+    int64_t maxrate;
+    int64_t minrate;
     int64_t now_bitrate; //add by zzh
+    int64_t last_change_fps;
 } OutputStream;
 
 typedef struct OutputFile {

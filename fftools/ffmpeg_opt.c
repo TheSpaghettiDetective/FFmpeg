@@ -42,6 +42,7 @@
 #include "libavutil/avassert.h"
 #include "libavutil/avstring.h"
 #include "libavutil/avutil.h"
+#include "libavutil/time.h"
 #include "libavutil/bprint.h"
 #include "libavutil/channel_layout.h"
 #include "libavutil/intreadwrite.h"
@@ -1615,6 +1616,7 @@ static OutputStream *new_output_stream(OptionsContext *o, AVFormatContext *oc, e
     if (ost->enc && av_get_exact_bits_per_sample(ost->enc->id) == 24)
         av_dict_set(&ost->swr_opts, "output_sample_bits", "24", 0);
 
+    ost->last_change_fps = av_gettime_relative();
     ost->source_index = source_index;
     if (source_index >= 0) {
         ost->sync_ist = input_streams[source_index];
