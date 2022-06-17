@@ -1651,6 +1651,7 @@ static void print_report(int is_last_report, int64_t timer_start, int64_t cur_ti
 
     bitrate = pts && total_size >= 0 ? total_size * 8 / (pts / 1000.0) : -1;
     speed = t != 0.0 ? (double)pts / AV_TIME_BASE / t : -1;
+    ost->last_speed = speed;
 
     if (total_size < 0) av_bprintf(&buf, "size=N/A time=");
     else                av_bprintf(&buf, "size=%8.0fkB time=", total_size / 1024.0);
@@ -4376,7 +4377,7 @@ static int transcode_step(void)
     }
 
     //to MrJiang only deal
-    if(ost-> now_bitrate != 0){
+    if(ost-> now_bitrate != 0 && ost->last_speed >= 0.9){
         if(ost->maxrate == 0) ost->maxrate = getMaxBitrate(ost->width,  ost->height);
         if(ost->minrate == 0) ost->minrate = getMinBitrate(ost->width,  ost->height);
         OutputFile* out_file = output_files[ost->file_index];

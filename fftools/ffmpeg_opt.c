@@ -1464,6 +1464,7 @@ static OutputStream *new_output_stream(OptionsContext *o, AVFormatContext *oc, e
     ost->st         = st;
     ost->forced_kf_ref_pts = AV_NOPTS_VALUE;
     st->codecpar->codec_type = type;
+    ost->last_speed = 1.0;
 
     ret = choose_encoder(o, oc, ost);
     if (ret < 0) {
