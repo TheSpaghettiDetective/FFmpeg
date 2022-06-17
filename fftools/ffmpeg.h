@@ -585,6 +585,8 @@ typedef struct OutputStream {
     int64_t minrate;
     int64_t now_bitrate; //add by zzh
     int64_t last_change_fps;
+
+    double  last_speed;
 } OutputStream;
 
 typedef struct OutputFile {
