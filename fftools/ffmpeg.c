@@ -1651,7 +1651,9 @@ static void print_report(int is_last_report, int64_t timer_start, int64_t cur_ti
 
     bitrate = pts && total_size >= 0 ? total_size * 8 / (pts / 1000.0) : -1;
     speed = t != 0.0 ? (double)pts / AV_TIME_BASE / t : -1;
-    ost->last_speed = speed;
+    for (i = 0; i < nb_output_streams; i++) {
+        ost[i].last_speed = speed;
+    }
 
     if (total_size < 0) av_bprintf(&buf, "size=N/A time=");
     else                av_bprintf(&buf, "size=%8.0fkB time=", total_size / 1024.0);
@@ -4336,12 +4338,14 @@ static void change_bitrate(OutputStream * ost, int64_t to_bitrate){
 }
 
 
-static int64_t getMaxBitrate(int width, int height){
-    return ((width*height)/64)*20*20;
+static int64_t getMaxBitrate(OutputStream * ost){
+    int div = ost->frame_rate.num / ost->frame_rate.den;
+    return ((ost->width*ost->height)/64)*20*20 * div / 25;
 }
 
-static int64_t  getMinBitrate(int width, int height){
-    return ((width*height)/64)*20;
+static int64_t  getMinBitrate(OutputStream * ost){
+    int div = ost->frame_rate.num / ost->frame_rate.den;
+    return ((ost->width*ost->height)/64) *20 * div / 25;
 }
 
 /**
@@ -4376,24 +4380,25 @@ static int transcode_step(void)
         }
     }
 
+    OutputStream *ostRtp = output_streams[0];
     //to MrJiang only deal
-    if(ost-> now_bitrate != 0 && ost->last_speed >= 0.9){
-        if(ost->maxrate == 0) ost->maxrate = getMaxBitrate(ost->width,  ost->height);
-        if(ost->minrate == 0) ost->minrate = getMinBitrate(ost->width,  ost->height);
-        OutputFile* out_file = output_files[ost->file_index];
+    if(ostRtp->file_index == 0 && ostRtp-> now_bitrate != 0 && ostRtp->last_speed >= 0.9){
+        if(ostRtp->maxrate == 0) ostRtp->maxrate = getMaxBitrate(ostRtp);
+        if(ostRtp->minrate == 0) ostRtp->minrate = getMinBitrate(ostRtp);
+        OutputFile* out_file = output_files[ostRtp->file_index];
             AVFormatContext* fc = out_file->ctx;
             if(fc && fc->pb ){
                 int64_t max_bitrate = avio_max_bitrate(fc->pb);
                 if(max_bitrate !=0){
-                    if(max_bitrate >= ost->maxrate) max_bitrate = ost->maxrate;
-                    if(max_bitrate <= ost->minrate) max_bitrate = ost->minrate;
+                    if(max_bitrate >= ostRtp->maxrate) max_bitrate = ostRtp->maxrate;
+                    if(max_bitrate <= ostRtp->minrate) max_bitrate = ostRtp->minrate;
 
-                    int64_t diff = max_bitrate - ost->now_bitrate;
+                    int64_t diff = max_bitrate - ostRtp->now_bitrate;
                     
-                    if(abs(diff) >= ost->now_bitrate*0.2 && av_gettime_relative() - ost->last_change_fps > 3*1000000){
-                        ost->last_change_fps = av_gettime_relative();
-                        change_bitrate(ost, max_bitrate);
-                        av_log(NULL, AV_LOG_ERROR, "zzh max_bitrate= %lld diff =%lld  time=%lld\n", (long long)max_bitrate, diff, av_gettime_relative());
+                    if(abs(diff) >= ostRtp->now_bitrate*0.2 && av_gettime_relative() - ostRtp->last_change_fps > 3*1000000){
+                        ostRtp->last_change_fps = av_gettime_relative();
+                        change_bitrate(ostRtp, max_bitrate);
+                        av_log(NULL, AV_LOG_WARNING, "zzh max_bitrate= %lld diff =%lld  time=%lld\n", (long long)max_bitrate, diff, av_gettime_relative());
                     }
                 }
 
