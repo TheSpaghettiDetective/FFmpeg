@@ -33,6 +33,7 @@
 #include "libavutil/avassert.h"
 #include "libavutil/avstring.h"
 #include "libavutil/avutil.h"
+#include "libavutil/time.h"
 #include "libavutil/channel_layout.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/fifo.h"
@@ -1434,6 +1435,7 @@ static OutputStream *new_output_stream(OptionsContext *o, AVFormatContext *oc, e
     ost->st         = st;
     ost->forced_kf_ref_pts = AV_NOPTS_VALUE;
     st->codecpar->codec_type = type;
+    ost->last_speed = 1.0;
 
     ret = choose_encoder(o, oc, ost);
     if (ret < 0) {
@@ -1569,7 +1571,7 @@ static OutputStream *new_output_stream(OptionsContext *o, AVFormatContext *oc, e
         av_dict_set(&ost->swr_opts, "output_sample_bits", "24", 0);
 
     av_dict_copy(&ost->resample_opts, o->g->resample_opts, 0);
-
+    ost->last_change_fps = av_gettime_relative();
     ost->source_index = source_index;
     if (source_index >= 0) {
         ost->sync_ist = input_streams[source_index];
@@ -1712,6 +1714,10 @@ static OutputStream *new_video_stream(OptionsContext *o, AVFormatContext *oc, in
             av_log(NULL, AV_LOG_FATAL, "Invalid frame size: %s.\n", frame_size);
             exit_program(1);
         }
+        
+        //save now width and height
+        ost->width = video_enc->width;
+        ost->height = video_enc->height;
 
         video_enc->bits_per_raw_sample = frame_bits_per_raw_sample;
         MATCH_PER_STREAM_OPT(frame_pix_fmts, str, frame_pix_fmt, oc, st);

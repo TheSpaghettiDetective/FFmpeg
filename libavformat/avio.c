@@ -443,6 +443,15 @@ int64_t ffurl_seek(URLContext *h, int64_t pos, int whence)
     return ret;
 }
 
+int64_t ffurl_max_bitrate(URLContext *h)
+{
+    if(!h->prot->url_max_bitrate){
+        return 0;
+    }
+    return h->prot->url_max_bitrate(h);
+}
+
+
 int ffurl_closep(URLContext **hh)
 {
     URLContext *h= *hh;
@@ -676,4 +685,10 @@ int ff_rename(const char *url_src, const char *url_dst, void *logctx)
     if (ret < 0)
         av_log(logctx, AV_LOG_ERROR, "failed to rename file %s to %s: %s\n", url_src, url_dst, av_err2str(ret));
     return ret;
+}
+
+int64_t avio_max_bitrate(AVIOContext *s){
+    if(!s->max_bitrate)
+        return 0 ;
+    return  s->max_bitrate(s->opaque);
 }

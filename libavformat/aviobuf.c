@@ -123,6 +123,8 @@ int ffio_init_context(AVIOContext *s,
     return 0;
 }
 
+
+
 AVIOContext *avio_alloc_context(
                   unsigned char *buffer,
                   int buffer_size,
@@ -138,6 +140,76 @@ AVIOContext *avio_alloc_context(
     ffio_init_context(s, buffer, buffer_size, write_flag, opaque,
                   read_packet, write_packet, seek);
     return s;
+}
+
+void ffio_init_context2(FFIOContext *ctx,
+                  unsigned char *buffer,
+                  int buffer_size,
+                  int write_flag,
+                  void *opaque,
+                  int (*read_packet)(void *opaque, uint8_t *buf, int buf_size),
+                  int (*write_packet)(void *opaque, uint8_t *buf, int buf_size),
+                  int64_t (*seek)(void *opaque, int64_t offset, int whence),
+                  int64_t (*max_bitrate)(void *opaque))
+{
+    AVIOContext *const s = &ctx->pub;
+
+    memset(ctx, 0, sizeof(*ctx));
+
+    s->buffer      = buffer;
+    ctx->orig_buffer_size =
+    s->buffer_size = buffer_size;
+    s->buf_ptr     = buffer;
+    s->buf_ptr_max = buffer;
+    s->opaque      = opaque;
+    s->direct      = 0;
+
+    url_resetbuf(s, write_flag ? AVIO_FLAG_WRITE : AVIO_FLAG_READ);
+
+    s->write_packet    = write_packet;
+    s->read_packet     = read_packet;
+    s->seek            = seek;
+    s->max_bitrate = max_bitrate;
+    s->pos             = 0;
+    s->eof_reached     = 0;
+    s->error           = 0;
+    s->seekable        = seek ? AVIO_SEEKABLE_NORMAL : 0;
+    s->min_packet_size = 0;
+    s->max_packet_size = 0;
+    s->update_checksum = NULL;
+    ctx->short_seek_threshold = SHORT_SEEK_THRESHOLD;
+
+    if (!read_packet && !write_flag) {
+        s->pos     = buffer_size;
+        s->buf_end = s->buffer + buffer_size;
+    }
+    s->read_pause = NULL;
+    s->read_seek  = NULL;
+
+    s->write_data_type       = NULL;
+    s->ignore_boundary_point = 0;
+    ctx->current_type        = AVIO_DATA_MARKER_UNKNOWN;
+    ctx->last_time           = AV_NOPTS_VALUE;
+    ctx->short_seek_get      = NULL;
+    s->written               = 0;
+}
+
+AVIOContext *avio_alloc_context2(
+                  unsigned char *buffer,
+                  int buffer_size,
+                  int write_flag,
+                  void *opaque,
+                  int (*read_packet)(void *opaque, uint8_t *buf, int buf_size),
+                  int (*write_packet)(void *opaque, uint8_t *buf, int buf_size),
+                  int64_t (*seek)(void *opaque, int64_t offset, int whence),
+                  int64_t (*max_bitrate)(void *opaque)){
+
+    FFIOContext *s = av_malloc(sizeof(*s));
+    if (!s)
+        return NULL;
+    ffio_init_context2(s, buffer, buffer_size, write_flag, opaque,
+                  read_packet, write_packet, seek, max_bitrate);
+    return &s->pub;
 }
 
 void avio_context_free(AVIOContext **ps)
@@ -930,10 +1002,11 @@ int ffio_fdopen(AVIOContext **s, URLContext *h)
     if (!buffer)
         return AVERROR(ENOMEM);
 
-    *s = avio_alloc_context(buffer, buffer_size, h->flags & AVIO_FLAG_WRITE, h,
-                            (int (*)(void *, uint8_t *, int))  ffurl_read,
-                            (int (*)(void *, uint8_t *, int))  ffurl_write,
-                            (int64_t (*)(void *, int64_t, int))ffurl_seek);
+    *s = avio_alloc_context2(buffer, buffer_size, h->flags & AVIO_FLAG_WRITE, h,
+                           (int (*)(void *, uint8_t *, int))  ffurl_read,
+                           (int (*)(void *, uint8_t *, int))  ffurl_write,
+                           (int64_t (*)(void *, int64_t, int))ffurl_seek,
+                           (int64_t(*)(void*))ffurl_max_bitrate);
     if (!*s)
         goto fail;
 
