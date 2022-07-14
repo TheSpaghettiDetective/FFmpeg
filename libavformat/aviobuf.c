@@ -142,7 +142,7 @@ AVIOContext *avio_alloc_context(
     return s;
 }
 
-void ffio_init_context2(FFIOContext *ctx,
+void ffio_init_context2(AVIOContext *s,
                   unsigned char *buffer,
                   int buffer_size,
                   int write_flag,
@@ -152,12 +152,10 @@ void ffio_init_context2(FFIOContext *ctx,
                   int64_t (*seek)(void *opaque, int64_t offset, int whence),
                   int64_t (*max_bitrate)(void *opaque))
 {
-    AVIOContext *const s = &ctx->pub;
-
-    memset(ctx, 0, sizeof(*ctx));
+    memset(s, 0, sizeof(AVIOContext));
 
     s->buffer      = buffer;
-    ctx->orig_buffer_size =
+    s->orig_buffer_size =
     s->buffer_size = buffer_size;
     s->buf_ptr     = buffer;
     s->buf_ptr_max = buffer;
@@ -168,8 +166,8 @@ void ffio_init_context2(FFIOContext *ctx,
 
     s->write_packet    = write_packet;
     s->read_packet     = read_packet;
+    s->max_bitrate     = max_bitrate;
     s->seek            = seek;
-    s->max_bitrate = max_bitrate;
     s->pos             = 0;
     s->eof_reached     = 0;
     s->error           = 0;
@@ -177,7 +175,7 @@ void ffio_init_context2(FFIOContext *ctx,
     s->min_packet_size = 0;
     s->max_packet_size = 0;
     s->update_checksum = NULL;
-    ctx->short_seek_threshold = SHORT_SEEK_THRESHOLD;
+    s->short_seek_threshold = SHORT_SEEK_THRESHOLD;
 
     if (!read_packet && !write_flag) {
         s->pos     = buffer_size;
@@ -188,9 +186,9 @@ void ffio_init_context2(FFIOContext *ctx,
 
     s->write_data_type       = NULL;
     s->ignore_boundary_point = 0;
-    ctx->current_type        = AVIO_DATA_MARKER_UNKNOWN;
-    ctx->last_time           = AV_NOPTS_VALUE;
-    ctx->short_seek_get      = NULL;
+    s->current_type          = AVIO_DATA_MARKER_UNKNOWN;
+    s->last_time             = AV_NOPTS_VALUE;
+    s->short_seek_get        = NULL;
     s->written               = 0;
 }
 
@@ -204,12 +202,12 @@ AVIOContext *avio_alloc_context2(
                   int64_t (*seek)(void *opaque, int64_t offset, int whence),
                   int64_t (*max_bitrate)(void *opaque)){
 
-    FFIOContext *s = av_malloc(sizeof(*s));
+    AVIOContext *s = av_malloc(sizeof(AVIOContext));
     if (!s)
         return NULL;
     ffio_init_context2(s, buffer, buffer_size, write_flag, opaque,
                   read_packet, write_packet, seek, max_bitrate);
-    return &s->pub;
+    return s;
 }
 
 void avio_context_free(AVIOContext **ps)

@@ -462,6 +462,8 @@ static int64_t rtp_get_bitrate_max(URLContext *h){
 
 static int rtp_write(URLContext *h, const uint8_t *buf, int size)
 {
+    rtp_read_rtcp_noblock(h);
+
     RTPContext *s = h->priv_data;
     int ret, ret_fec;
     URLContext *hd;

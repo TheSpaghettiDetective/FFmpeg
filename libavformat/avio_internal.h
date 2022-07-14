@@ -36,7 +36,7 @@ int ffio_init_context(AVIOContext *s,
                   int64_t (*seek)(void *opaque, int64_t offset, int whence));
 
 
-void ffio_init_context2(FFIOContext *s,
+void ffio_init_context2(AVIOContext *s,
                   unsigned char *buffer,
                   int buffer_size,
                   int write_flag,
