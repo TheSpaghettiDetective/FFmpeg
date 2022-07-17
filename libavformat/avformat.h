@@ -1951,6 +1951,8 @@ typedef struct AVFormatContext {
      * - decoding: set by user
      */
     int max_probe_packets;
+
+    int resetSSRC;
 } AVFormatContext;
 
 #if FF_API_FORMAT_GET_SET

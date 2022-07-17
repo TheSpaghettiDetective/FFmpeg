@@ -97,6 +97,7 @@ typedef struct URLProtocol {
     int (*url_delete)(URLContext *h);
     int (*url_move)(URLContext *h_src, URLContext *h_dst);
     const char *default_whitelist;
+    int64_t (*url_max_bitrate)(URLContext *h);
 } URLProtocol;
 
 /**
@@ -217,6 +218,8 @@ int ffurl_write(URLContext *h, const unsigned char *buf, int size);
  * SEEK_CUR to read the current file position.
  */
 int64_t ffurl_seek(URLContext *h, int64_t pos, int whence);
+
+int64_t ffurl_max_bitrate(URLContext *h);
 
 /**
  * Close the resource accessed by the URLContext h, and free the
