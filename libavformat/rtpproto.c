@@ -25,7 +25,6 @@
  */
 
 #include "libavutil/parseutils.h"
-#include "libavutil/intreadwrite.h"
 #include "libavutil/avstring.h"
 #include "libavutil/opt.h"
 #include "avformat.h"
@@ -62,16 +61,13 @@ typedef struct RTPContext {
     char *block;
     char *fec_options_str;
     int64_t rw_timeout;
-    char *localaddr;
-    int64_t bitrate_max;
-    uint8_t  fractionLost;
 } RTPContext;
 
 #define OFFSET(x) offsetof(RTPContext, x)
 #define D AV_OPT_FLAG_DECODING_PARAM
 #define E AV_OPT_FLAG_ENCODING_PARAM
 static const AVOption options[] = {
-    { "ttl",                "Time to live (multicast only)",                                    OFFSET(ttl),             AV_OPT_TYPE_INT,    { .i64 = -1 },    -1, 255,     .flags = D|E },
+    { "ttl",                "Time to live (in milliseconds, multicast only)",                   OFFSET(ttl),             AV_OPT_TYPE_INT,    { .i64 = -1 },    -1, INT_MAX, .flags = D|E },
     { "buffer_size",        "Send/Receive buffer size (in bytes)",                              OFFSET(buffer_size),     AV_OPT_TYPE_INT,    { .i64 = -1 },    -1, INT_MAX, .flags = D|E },
     { "rtcp_port",          "Custom rtcp port",                                                 OFFSET(rtcp_port),       AV_OPT_TYPE_INT,    { .i64 = -1 },    -1, INT_MAX, .flags = D|E },
     { "local_rtpport",      "Local rtp port",                                                   OFFSET(local_rtpport),   AV_OPT_TYPE_INT,    { .i64 = -1 },    -1, INT_MAX, .flags = D|E },
@@ -84,7 +80,6 @@ static const AVOption options[] = {
     { "sources",            "Source list",                                                      OFFSET(sources),         AV_OPT_TYPE_STRING, { .str = NULL },               .flags = D|E },
     { "block",              "Block list",                                                       OFFSET(block),           AV_OPT_TYPE_STRING, { .str = NULL },               .flags = D|E },
     { "fec",                "FEC",                                                              OFFSET(fec_options_str), AV_OPT_TYPE_STRING, { .str = NULL },               .flags = E },
-    { "localaddr",          "Local address",                                                    OFFSET(localaddr),       AV_OPT_TYPE_STRING, { .str = NULL },               .flags = D|E },
     { NULL }
 };
 
@@ -178,7 +173,6 @@ static av_printf_format(3, 4) void url_add_option(char *buf, int buf_size, const
 static void build_udp_url(RTPContext *s,
                           char *buf, int buf_size,
                           const char *hostname,
-                          const char *localaddr,
                           int port, int local_port,
                           const char *include_sources,
                           const char *exclude_sources)
@@ -201,8 +195,6 @@ static void build_udp_url(RTPContext *s,
         url_add_option(buf, buf_size, "sources=%s", include_sources);
     if (exclude_sources && exclude_sources[0])
         url_add_option(buf, buf_size, "block=%s", exclude_sources);
-    if (localaddr && localaddr[0])
-        url_add_option(buf, buf_size, "localaddr=%s", localaddr);
 }
 
 /**
@@ -292,12 +284,6 @@ static int rtp_open(URLContext *h, const char *uri, int flags)
             ff_ip_parse_blocks(h, s->block, &s->filters);
             block = s->block;
         }
-        if (av_find_info_tag(buf, sizeof(buf), "localaddr", p)) {
-            av_freep(&s->localaddr);
-            s->localaddr = av_strdup(buf);
-            if (!s->localaddr)
-                goto fail;
-        }
     }
     if (s->rw_timeout >= 0)
         h->rw_timeout = s->rw_timeout;
@@ -328,7 +314,7 @@ static int rtp_open(URLContext *h, const char *uri, int flags)
 
     for (i = 0; i < max_retry_count; i++) {
         build_udp_url(s, buf, sizeof(buf),
-                      hostname, s->localaddr, rtp_port, s->local_rtpport,
+                      hostname, rtp_port, s->local_rtpport,
                       sources, block);
         if (ffurl_open_whitelist(&s->rtp_hd, buf, flags, &h->interrupt_callback,
                                  NULL, h->protocol_whitelist, h->protocol_blacklist, h) < 0)
@@ -342,7 +328,7 @@ static int rtp_open(URLContext *h, const char *uri, int flags)
         if (s->local_rtcpport < 0) {
             s->local_rtcpport = s->local_rtpport + 1;
             build_udp_url(s, buf, sizeof(buf),
-                          hostname, s->localaddr, s->rtcp_port, s->local_rtcpport,
+                          hostname, s->rtcp_port, s->local_rtcpport,
                           sources, block);
             if (ffurl_open_whitelist(&s->rtcp_hd, buf, rtcpflags,
                                      &h->interrupt_callback, NULL,
@@ -353,7 +339,7 @@ static int rtp_open(URLContext *h, const char *uri, int flags)
             break;
         }
         build_udp_url(s, buf, sizeof(buf),
-                      hostname, s->localaddr, s->rtcp_port, s->local_rtcpport,
+                      hostname, s->rtcp_port, s->local_rtcpport,
                       sources, block);
         if (ffurl_open_whitelist(&s->rtcp_hd, buf, rtcpflags, &h->interrupt_callback,
                                  NULL, h->protocol_whitelist, h->protocol_blacklist, h) < 0)
@@ -435,57 +421,8 @@ static int rtp_read(URLContext *h, uint8_t *buf, int size)
     }
 }
 
-static int64_t get_remb(const uint8_t *buf, int size){
-    if(size < 20) return 0;
-
-    if(buf[1] ==  RTCP_RR){  //rtcp rr
-        uint32_t fraction = avio_rb32(buf + 16);
-        uint8_t loss = fraction >> 24;
-        av_log(NULL, AV_LOG_ERROR, "______ recv loss %f\n",  (loss*1.0)/256);
-    }
-
-    if(buf[12] != 'R' || buf[13] != 'E' || buf[14] != 'M' || buf[15] != 'B'){
-        return 0;
-    }
-
-    uint32_t exp  = (AV_RB8(buf + 17) >> 2) & 0x3F;
-    uint32_t mantissa = (AV_RB8(buf + 17) & 0x03) << 16;
-    mantissa += AV_RB16(buf + 18);
-    return ((int64_t)mantissa << exp);
-}
-
-static int rtp_read_rtcp_noblock(URLContext *h)
-{
-
-    RTPContext *s = h->priv_data;
-    int len, n;
-    struct pollfd p[1] = {{s->rtcp_fd, POLLIN, 0}};
-    n = poll(p, 1, 0);
-    if (n > 0) {
-        if (p[0].revents & POLLIN){
-            char buff[1024];
-            len = recv(p[0].fd, buff, 1024, 0);
-            // av_log(h, AV_LOG_ERROR, "______ recv %d\n", len);
-            if(len>0){
-                s->bitrate_max = get_remb(buff, len);
-                // if(remb != 0){
-                //      av_log(h, AV_LOG_ERROR, "______ remb %lld\n", remb);
-                // }
-            }
-        }
-    }
-    return 0;
-}
-
-static int64_t rtp_get_bitrate_max(URLContext *h){
-    RTPContext *s = h->priv_data;
-    return s->bitrate_max;
-}
-
 static int rtp_write(URLContext *h, const uint8_t *buf, int size)
 {
-    rtp_read_rtcp_noblock(h);
-
     RTPContext *s = h->priv_data;
     int ret, ret_fec;
     URLContext *hd;
@@ -627,7 +564,6 @@ const URLProtocol ff_rtp_protocol = {
     .url_close                 = rtp_close,
     .url_get_file_handle       = rtp_get_file_handle,
     .url_get_multi_file_handle = rtp_get_multi_file_handle,
-    .url_max_bitrate           = rtp_get_bitrate_max,
     .priv_data_size            = sizeof(RTPContext),
     .flags                     = URL_PROTOCOL_FLAG_NETWORK,
     .priv_data_class           = &rtp_class,

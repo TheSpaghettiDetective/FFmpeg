@@ -25,7 +25,6 @@
 
 #include "avcodec.h"
 #include "bytestream.h"
-#include "codec_internal.h"
 #include "internal.h"
 #include "mathops.h"
 
@@ -79,7 +78,7 @@ static av_cold int fastaudio_init(AVCodecContext *avctx)
     for (int i = 0; i < 8; i++)
         s->table[7][i] = i * 0.34f / 3.f - 0.2f;
 
-    s->ch = av_calloc(avctx->ch_layout.nb_channels, sizeof(*s->ch));
+    s->ch = av_calloc(avctx->channels, sizeof(*s->ch));
     if (!s->ch)
         return AVERROR(ENOMEM);
 
@@ -105,15 +104,16 @@ static void set_sample(int i, int j, int v, float *result, int *pads, float valu
     result[i * 64 + pads[i] + j * 3] = value * (2 * v - 7);
 }
 
-static int fastaudio_decode(AVCodecContext *avctx, AVFrame *frame,
+static int fastaudio_decode(AVCodecContext *avctx, void *data,
                             int *got_frame, AVPacket *pkt)
 {
     FastAudioContext *s = avctx->priv_data;
     GetByteContext gb;
+    AVFrame *frame = data;
     int subframes;
     int ret;
 
-    subframes = pkt->size / (40 * avctx->ch_layout.nb_channels);
+    subframes = pkt->size / (40 * avctx->channels);
     frame->nb_samples = subframes * 256;
     if ((ret = ff_get_buffer(avctx, frame, 0)) < 0)
         return ret;
@@ -121,7 +121,7 @@ static int fastaudio_decode(AVCodecContext *avctx, AVFrame *frame,
     bytestream2_init(&gb, pkt->data, pkt->size);
 
     for (int subframe = 0; subframe < subframes; subframe++) {
-        for (int channel = 0; channel < avctx->ch_layout.nb_channels; channel++) {
+        for (int channel = 0; channel < avctx->channels; channel++) {
             ChannelItems *ch = &s->ch[channel];
             float result[256] = { 0 };
             unsigned src[10];
@@ -187,17 +187,16 @@ static av_cold int fastaudio_close(AVCodecContext *avctx)
     return 0;
 }
 
-const FFCodec ff_fastaudio_decoder = {
-    .p.name         = "fastaudio",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("MobiClip FastAudio"),
-    .p.type         = AVMEDIA_TYPE_AUDIO,
-    .p.id           = AV_CODEC_ID_FASTAUDIO,
+AVCodec ff_fastaudio_decoder = {
+    .name           = "fastaudio",
+    .long_name      = NULL_IF_CONFIG_SMALL("MobiClip FastAudio"),
+    .type           = AVMEDIA_TYPE_AUDIO,
+    .id             = AV_CODEC_ID_FASTAUDIO,
     .priv_data_size = sizeof(FastAudioContext),
     .init           = fastaudio_init,
-    FF_CODEC_DECODE_CB(fastaudio_decode),
+    .decode         = fastaudio_decode,
     .close          = fastaudio_close,
-    .p.capabilities = AV_CODEC_CAP_DR1,
-    .p.sample_fmts  = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
+    .capabilities   = AV_CODEC_CAP_DR1,
+    .sample_fmts    = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
                                                       AV_SAMPLE_FMT_NONE },
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

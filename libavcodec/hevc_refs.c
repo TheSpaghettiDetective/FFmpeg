@@ -22,11 +22,12 @@
  */
 
 #include "libavutil/avassert.h"
+#include "libavutil/pixdesc.h"
 
+#include "internal.h"
 #include "thread.h"
 #include "hevc.h"
 #include "hevcdec.h"
-#include "threadframe.h"
 
 void ff_hevc_unref_frame(HEVCContext *s, HEVCFrame *frame, int flags)
 {
@@ -36,9 +37,7 @@ void ff_hevc_unref_frame(HEVCContext *s, HEVCFrame *frame, int flags)
 
     frame->flags &= ~flags;
     if (!frame->flags) {
-        ff_thread_release_ext_buffer(s->avctx, &frame->tf);
-        ff_thread_release_buffer(s->avctx, frame->frame_grain);
-        frame->needs_fg = 0;
+        ff_thread_release_buffer(s->avctx, &frame->tf);
 
         av_buffer_unref(&frame->tab_mvf_buf);
         frame->tab_mvf = NULL;
@@ -88,8 +87,8 @@ static HEVCFrame *alloc_frame(HEVCContext *s)
         if (frame->frame->buf[0])
             continue;
 
-        ret = ff_thread_get_ext_buffer(s->avctx, &frame->tf,
-                                       AV_GET_BUFFER_FLAG_REF);
+        ret = ff_thread_get_buffer(s->avctx, &frame->tf,
+                                   AV_GET_BUFFER_FLAG_REF);
         if (ret < 0)
             return NULL;
 
@@ -97,18 +96,22 @@ static HEVCFrame *alloc_frame(HEVCContext *s)
         if (!frame->rpl_buf)
             goto fail;
 
-        frame->tab_mvf_buf = av_buffer_pool_get(s->tab_mvf_pool);
-        if (!frame->tab_mvf_buf)
-            goto fail;
-        frame->tab_mvf = (MvField *)frame->tab_mvf_buf->data;
+        if (s->tab_mvf_pool) {
+            frame->tab_mvf_buf = av_buffer_pool_get(s->tab_mvf_pool);
+            if (!frame->tab_mvf_buf)
+                goto fail;
+            frame->tab_mvf = (MvField *)frame->tab_mvf_buf->data;
+        }
 
-        frame->rpl_tab_buf = av_buffer_pool_get(s->rpl_tab_pool);
-        if (!frame->rpl_tab_buf)
-            goto fail;
-        frame->rpl_tab   = (RefPicListTab **)frame->rpl_tab_buf->data;
-        frame->ctb_count = s->ps.sps->ctb_width * s->ps.sps->ctb_height;
-        for (j = 0; j < frame->ctb_count; j++)
-            frame->rpl_tab[j] = (RefPicListTab *)frame->rpl_buf->data;
+        if (s->rpl_tab_pool) {
+            frame->rpl_tab_buf = av_buffer_pool_get(s->rpl_tab_pool);
+            if (!frame->rpl_tab_buf)
+                goto fail;
+            frame->rpl_tab   = (RefPicListTab **)frame->rpl_tab_buf->data;
+            frame->ctb_count = s->ps.sps->ctb_width * s->ps.sps->ctb_height;
+            for (j = 0; j < frame->ctb_count; j++)
+                frame->rpl_tab[j] = (RefPicListTab *)frame->rpl_buf->data;
+        }
 
         frame->frame->top_field_first  = s->sei.picture_timing.picture_struct == AV_PICTURE_STRUCTURE_TOP_FIELD;
         frame->frame->interlaced_frame = (s->sei.picture_timing.picture_struct == AV_PICTURE_STRUCTURE_TOP_FIELD) || (s->sei.picture_timing.picture_struct == AV_PICTURE_STRUCTURE_BOTTOM_FIELD);
@@ -209,19 +212,13 @@ int ff_hevc_output_frame(HEVCContext *s, AVFrame *out, int flush)
         if (nb_output) {
             HEVCFrame *frame = &s->DPB[min_idx];
 
-            ret = av_frame_ref(out, frame->needs_fg ? frame->frame_grain : frame->frame);
+            ret = av_frame_ref(out, frame->frame);
             if (frame->flags & HEVC_FRAME_FLAG_BUMPING)
                 ff_hevc_unref_frame(s, frame, HEVC_FRAME_FLAG_OUTPUT | HEVC_FRAME_FLAG_BUMPING);
             else
                 ff_hevc_unref_frame(s, frame, HEVC_FRAME_FLAG_OUTPUT);
             if (ret < 0)
                 return ret;
-
-            if (frame->needs_fg && (ret = av_frame_copy_props(out, frame->frame)) < 0)
-                return ret;
-
-            if (!(s->avctx->export_side_data & AV_CODEC_EXPORT_DATA_FILM_GRAIN))
-                av_frame_remove_side_data(out, AV_FRAME_DATA_FILM_GRAIN_PARAMS);
 
             av_log(s->avctx, AV_LOG_DEBUG,
                    "Output frame with POC %d.\n", frame->poc);
@@ -283,14 +280,17 @@ static int init_slice_rpl(HEVCContext *s)
     int ctb_count    = frame->ctb_count;
     int ctb_addr_ts  = s->ps.pps->ctb_addr_rs_to_ts[s->sh.slice_segment_addr];
     int i;
+    RefPicListTab * const tab = (RefPicListTab *)frame->rpl_buf->data + s->slice_idx;
 
     if (s->slice_idx >= frame->rpl_buf->size / sizeof(RefPicListTab))
         return AVERROR_INVALIDDATA;
 
-    for (i = ctb_addr_ts; i < ctb_count; i++)
-        frame->rpl_tab[i] = (RefPicListTab *)frame->rpl_buf->data + s->slice_idx;
+    if (frame->rpl_tab) {
+        for (i = ctb_addr_ts; i < ctb_count; i++)
+            frame->rpl_tab[i] = tab;
+    }
 
-    frame->refPicList = (RefPicList *)frame->rpl_tab[ctb_addr_ts];
+    frame->refPicList = tab->refPicList;
 
     return 0;
 }
@@ -401,9 +401,9 @@ static HEVCFrame *generate_missing_ref(HEVCContext *s, int poc)
 
     if (!s->avctx->hwaccel) {
         if (!s->ps.sps->pixel_shift) {
-            for (i = 0; frame->frame->data[i]; i++)
-                memset(frame->frame->data[i], 1 << (s->ps.sps->bit_depth - 1),
-                       frame->frame->linesize[i] * AV_CEIL_RSHIFT(s->ps.sps->height, s->ps.sps->vshift[i]));
+            for (i = 0; frame->frame->buf[i]; i++)
+                memset(frame->frame->buf[i]->data, 1 << (s->ps.sps->bit_depth - 1),
+                       frame->frame->buf[i]->size);
         } else {
             for (i = 0; frame->frame->data[i]; i++)
                 for (y = 0; y < (s->ps.sps->height >> s->ps.sps->vshift[i]); y++) {

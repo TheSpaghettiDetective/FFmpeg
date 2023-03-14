@@ -30,7 +30,6 @@
 
 #include "libavformat/avformat.h"
 #include "libavformat/internal.h"
-#include "libavformat/version.h"
 #include "pulse_audio_common.h"
 #include "timefilter.h"
 
@@ -260,7 +259,7 @@ static av_cold int pulse_read_header(AVFormatContext *s)
     st->codecpar->codec_type  = AVMEDIA_TYPE_AUDIO;
     st->codecpar->codec_id    = codec_id;
     st->codecpar->sample_rate = pd->sample_rate;
-    st->codecpar->ch_layout.nb_channels = pd->channels;
+    st->codecpar->channels    = pd->channels;
     avpriv_set_pts_info(st, 64, 1, 1000000);  /* 64 bits pts in us */
 
     pd->timefilter = ff_timefilter_new(1000000.0 / pd->sample_rate,
@@ -387,7 +386,7 @@ static const AVClass pulse_demuxer_class = {
     .category       = AV_CLASS_CATEGORY_DEVICE_AUDIO_INPUT,
 };
 
-const AVInputFormat ff_pulse_demuxer = {
+AVInputFormat ff_pulse_demuxer = {
     .name           = "pulse",
     .long_name      = NULL_IF_CONFIG_SMALL("Pulse audio input"),
     .priv_data_size = sizeof(PulseData),

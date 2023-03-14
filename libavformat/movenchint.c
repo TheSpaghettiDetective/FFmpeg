@@ -21,7 +21,7 @@
 
 #include "movenc.h"
 #include "libavutil/intreadwrite.h"
-#include "mux.h"
+#include "internal.h"
 #include "rtpenc_chain.h"
 #include "avio_internal.h"
 #include "rtp.h"
@@ -260,7 +260,8 @@ static void output_immediate(const uint8_t *data, int size,
         data += len;
         size -= len;
 
-        ffio_fill(out, 0, 14 - len);
+        for (; len < 14; len++)
+            avio_w8(out, 0);
 
         (*entries)++;
     }

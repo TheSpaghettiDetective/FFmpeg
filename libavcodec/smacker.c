@@ -50,7 +50,6 @@
 #endif
 #define BITSTREAM_READER_LE
 #include "bytestream.h"
-#include "codec_internal.h"
 #include "get_bits.h"
 #include "internal.h"
 #include "mathops.h"
@@ -371,8 +370,8 @@ static av_always_inline int smk_get_code(GetBitContext *gb, int *recode, int *la
     return v;
 }
 
-static int decode_frame(AVCodecContext *avctx, AVFrame *rframe,
-                        int *got_frame, AVPacket *avpkt)
+static int decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
+                        AVPacket *avpkt)
 {
     SmackVContext * const smk = avctx->priv_data;
     uint8_t *out;
@@ -518,7 +517,7 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *rframe,
 
     }
 
-    if ((ret = av_frame_ref(rframe, smk->pic)) < 0)
+    if ((ret = av_frame_ref(data, smk->pic)) < 0)
         return ret;
 
     *got_frame = 1;
@@ -573,13 +572,11 @@ static av_cold int decode_init(AVCodecContext *avctx)
 
 static av_cold int smka_decode_init(AVCodecContext *avctx)
 {
-    int channels = avctx->ch_layout.nb_channels;
-    if (channels < 1 || channels > 2) {
+    if (avctx->channels < 1 || avctx->channels > 2) {
         av_log(avctx, AV_LOG_ERROR, "invalid number of channels\n");
         return AVERROR_INVALIDDATA;
     }
-    av_channel_layout_uninit(&avctx->ch_layout);
-    av_channel_layout_default(&avctx->ch_layout, channels);
+    avctx->channel_layout = (avctx->channels==2) ? AV_CH_LAYOUT_STEREO : AV_CH_LAYOUT_MONO;
     avctx->sample_fmt = avctx->bits_per_coded_sample == 8 ? AV_SAMPLE_FMT_U8 : AV_SAMPLE_FMT_S16;
 
     return 0;
@@ -588,9 +585,10 @@ static av_cold int smka_decode_init(AVCodecContext *avctx)
 /**
  * Decode Smacker audio data
  */
-static int smka_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+static int smka_decode_frame(AVCodecContext *avctx, void *data,
                              int *got_frame_ptr, AVPacket *avpkt)
 {
+    AVFrame *frame     = data;
     const uint8_t *buf = avpkt->data;
     int buf_size = avpkt->size;
     GetBitContext gb;
@@ -625,7 +623,7 @@ static int smka_decode_frame(AVCodecContext *avctx, AVFrame *frame,
     }
     stereo = get_bits1(&gb);
     bits = get_bits1(&gb);
-    if (stereo ^ (avctx->ch_layout.nb_channels != 1)) {
+    if (stereo ^ (avctx->channels != 1)) {
         av_log(avctx, AV_LOG_ERROR, "channels mismatch\n");
         return AVERROR_INVALIDDATA;
     }
@@ -635,8 +633,8 @@ static int smka_decode_frame(AVCodecContext *avctx, AVFrame *frame,
     }
 
     /* get output buffer */
-    frame->nb_samples = unp_size / (avctx->ch_layout.nb_channels * (bits + 1));
-    if (unp_size % (avctx->ch_layout.nb_channels * (bits + 1))) {
+    frame->nb_samples = unp_size / (avctx->channels * (bits + 1));
+    if (unp_size % (avctx->channels * (bits + 1))) {
         av_log(avctx, AV_LOG_ERROR,
                "The buffer does not contain an integer number of samples\n");
         return AVERROR_INVALIDDATA;
@@ -722,26 +720,26 @@ error:
     return ret;
 }
 
-const FFCodec ff_smacker_decoder = {
-    .p.name         = "smackvid",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Smacker video"),
-    .p.type         = AVMEDIA_TYPE_VIDEO,
-    .p.id           = AV_CODEC_ID_SMACKVIDEO,
+AVCodec ff_smacker_decoder = {
+    .name           = "smackvid",
+    .long_name      = NULL_IF_CONFIG_SMALL("Smacker video"),
+    .type           = AVMEDIA_TYPE_VIDEO,
+    .id             = AV_CODEC_ID_SMACKVIDEO,
     .priv_data_size = sizeof(SmackVContext),
     .init           = decode_init,
     .close          = decode_end,
-    FF_CODEC_DECODE_CB(decode_frame),
-    .p.capabilities = AV_CODEC_CAP_DR1,
+    .decode         = decode_frame,
+    .capabilities   = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP | FF_CODEC_CAP_INIT_THREADSAFE,
 };
 
-const FFCodec ff_smackaud_decoder = {
-    .p.name         = "smackaud",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Smacker audio"),
-    .p.type         = AVMEDIA_TYPE_AUDIO,
-    .p.id           = AV_CODEC_ID_SMACKAUDIO,
+AVCodec ff_smackaud_decoder = {
+    .name           = "smackaud",
+    .long_name      = NULL_IF_CONFIG_SMALL("Smacker audio"),
+    .type           = AVMEDIA_TYPE_AUDIO,
+    .id             = AV_CODEC_ID_SMACKAUDIO,
     .init           = smka_decode_init,
-    FF_CODEC_DECODE_CB(smka_decode_frame),
-    .p.capabilities = AV_CODEC_CAP_DR1,
+    .decode         = smka_decode_frame,
+    .capabilities   = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

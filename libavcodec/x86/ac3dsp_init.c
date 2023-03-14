@@ -20,8 +20,10 @@
  */
 
 #include "libavutil/attributes.h"
+#include "libavutil/mem.h"
 #include "libavutil/x86/asm.h"
 #include "libavutil/x86/cpu.h"
+#include "libavcodec/ac3.h"
 #include "libavcodec/ac3dsp.h"
 
 void ff_ac3_exponent_min_mmx   (uint8_t *exp, int num_reuse_blocks, int nb_coefs);

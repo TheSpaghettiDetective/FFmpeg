@@ -20,7 +20,6 @@
  */
 
 #include "avcodec.h"
-#include "codec_internal.h"
 #include "internal.h"
 #include "libavutil/imgutils.h"
 
@@ -50,10 +49,11 @@ static av_cold int init(AVCodecContext *avctx)
     return 0;
 }
 
-static int decode_frame(AVCodecContext *avctx, AVFrame *p,
+static int decode_frame(AVCodecContext *avctx, void *data,
                         int *got_frame, AVPacket *avpkt)
 {
     AVRnContext *a = avctx->priv_data;
+    AVFrame *p = data;
     const uint8_t *buf = avpkt->data;
     int buf_size       = avpkt->size;
     int y, ret, true_height;
@@ -89,14 +89,14 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *p,
     return buf_size;
 }
 
-const FFCodec ff_avrn_decoder = {
-    .p.name         = "avrn",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Avid AVI Codec"),
-    .p.type         = AVMEDIA_TYPE_VIDEO,
-    .p.id           = AV_CODEC_ID_AVRN,
+AVCodec ff_avrn_decoder = {
+    .name           = "avrn",
+    .long_name      = NULL_IF_CONFIG_SMALL("Avid AVI Codec"),
+    .type           = AVMEDIA_TYPE_VIDEO,
+    .id             = AV_CODEC_ID_AVRN,
     .priv_data_size = sizeof(AVRnContext),
     .init           = init,
-    FF_CODEC_DECODE_CB(decode_frame),
-    .p.capabilities = AV_CODEC_CAP_DR1,
+    .decode         = decode_frame,
+    .capabilities   = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };

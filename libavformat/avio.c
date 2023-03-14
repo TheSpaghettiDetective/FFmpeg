@@ -67,6 +67,9 @@ const AVClass ffurl_context_class = {
     .option           = options,
     .version          = LIBAVUTIL_VERSION_INT,
     .child_next       = urlcontext_child_next,
+#if FF_API_CHILD_CLASS_NEXT
+    .child_class_next = ff_urlcontext_child_class_next,
+#endif
     .child_class_iterate = ff_urlcontext_child_class_iterate,
 };
 /*@}*/
@@ -435,14 +438,6 @@ int64_t ffurl_seek(URLContext *h, int64_t pos, int whence)
     return ret;
 }
 
-int64_t ffurl_max_bitrate(URLContext *h)
-{
-    if(!h->prot->url_max_bitrate){
-        return 0;
-    }
-    return h->prot->url_max_bitrate(h);
-}
-
 int ffurl_closep(URLContext **hh)
 {
     URLContext *h= *hh;
@@ -498,14 +493,7 @@ int avio_check(const char *url, int flags)
     return ret;
 }
 
-int64_t avio_max_bitrate(AVIOContext *s){
-    if(!s->max_bitrate)
-        return 0 ;
-    return  s->max_bitrate(s->opaque);
-}
-
-
-int ffurl_move(const char *url_src, const char *url_dst)
+int avpriv_io_move(const char *url_src, const char *url_dst)
 {
     URLContext *h_src, *h_dst;
     int ret = ffurl_alloc(&h_src, url_src, AVIO_FLAG_READ_WRITE, NULL);
@@ -527,7 +515,7 @@ int ffurl_move(const char *url_src, const char *url_dst)
     return ret;
 }
 
-int ffurl_delete(const char *url)
+int avpriv_io_delete(const char *url)
 {
     URLContext *h;
     int ret = ffurl_alloc(&h, url, AVIO_FLAG_WRITE, NULL);
@@ -679,7 +667,7 @@ int ff_check_interrupt(AVIOInterruptCB *cb)
 
 int ff_rename(const char *url_src, const char *url_dst, void *logctx)
 {
-    int ret = ffurl_move(url_src, url_dst);
+    int ret = avpriv_io_move(url_src, url_dst);
     if (ret < 0)
         av_log(logctx, AV_LOG_ERROR, "failed to rename file %s to %s: %s\n", url_src, url_dst, av_err2str(ret));
     return ret;

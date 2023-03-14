@@ -26,10 +26,10 @@
 #include "libavutil/imgutils.h"
 #include "libavutil/internal.h"
 #include "libavutil/intreadwrite.h"
+#include "libavutil/mem.h"
 
 #include "avcodec.h"
 #include "bytestream.h"
-#include "codec_internal.h"
 #include "internal.h"
 
 typedef struct ArgoContext {
@@ -599,7 +599,7 @@ static int decode_rle(AVCodecContext *avctx, AVFrame *frame)
     return 0;
 }
 
-static int decode_frame(AVCodecContext *avctx, AVFrame *rframe,
+static int decode_frame(AVCodecContext *avctx, void *data,
                         int *got_frame, AVPacket *avpkt)
 {
     ArgoContext *s = avctx->priv_data;
@@ -665,7 +665,7 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *rframe,
     if (avctx->pix_fmt == AV_PIX_FMT_PAL8)
         memcpy(frame->data[1], s->pal, AVPALETTE_SIZE);
 
-    if ((ret = av_frame_ref(rframe, s->frame)) < 0)
+    if ((ret = av_frame_ref(data, s->frame)) < 0)
         return ret;
 
     frame->pict_type = s->key ? AV_PICTURE_TYPE_I : AV_PICTURE_TYPE_P;
@@ -679,12 +679,12 @@ static av_cold int decode_init(AVCodecContext *avctx)
 {
     ArgoContext *s = avctx->priv_data;
 
-    switch (avctx->bits_per_coded_sample) {
+    switch (avctx->bits_per_raw_sample) {
     case  8: s->bpp = 1;
              avctx->pix_fmt = AV_PIX_FMT_PAL8; break;
     case 24: s->bpp = 4;
              avctx->pix_fmt = AV_PIX_FMT_BGR0; break;
-    default: avpriv_request_sample(s, "depth == %u", avctx->bits_per_coded_sample);
+    default: avpriv_request_sample(s, "depth == %u", avctx->bits_per_raw_sample);
              return AVERROR_PATCHWELCOME;
     }
 
@@ -733,16 +733,16 @@ static av_cold int decode_close(AVCodecContext *avctx)
     return 0;
 }
 
-const FFCodec ff_argo_decoder = {
-    .p.name         = "argo",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Argonaut Games Video"),
-    .p.type         = AVMEDIA_TYPE_VIDEO,
-    .p.id           = AV_CODEC_ID_ARGO,
+AVCodec ff_argo_decoder = {
+    .name           = "argo",
+    .long_name      = NULL_IF_CONFIG_SMALL("Argonaut Games Video"),
+    .type           = AVMEDIA_TYPE_VIDEO,
+    .id             = AV_CODEC_ID_ARGO,
     .priv_data_size = sizeof(ArgoContext),
     .init           = decode_init,
-    FF_CODEC_DECODE_CB(decode_frame),
+    .decode         = decode_frame,
     .flush          = decode_flush,
     .close          = decode_close,
-    .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .capabilities   = AV_CODEC_CAP_DR1,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

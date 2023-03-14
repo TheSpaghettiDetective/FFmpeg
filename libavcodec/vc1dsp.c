@@ -24,8 +24,6 @@
  * VC-1 and WMV3 decoder
  */
 
-#include "config_components.h"
-
 #include "libavutil/avassert.h"
 #include "libavutil/common.h"
 #include "libavutil/intreadwrite.h"
@@ -37,7 +35,7 @@
 #include "vc1_common.h"
 
 /* Apply overlap transform to horizontal edge */
-static void vc1_v_overlap_c(uint8_t *src, ptrdiff_t stride)
+static void vc1_v_overlap_c(uint8_t *src, int stride)
 {
     int i;
     int a, b, c, d;
@@ -61,7 +59,7 @@ static void vc1_v_overlap_c(uint8_t *src, ptrdiff_t stride)
 }
 
 /* Apply overlap transform to vertical edge */
-static void vc1_h_overlap_c(uint8_t *src, ptrdiff_t stride)
+static void vc1_h_overlap_c(uint8_t *src, int stride)
 {
     int i;
     int a, b, c, d;
@@ -110,7 +108,7 @@ static void vc1_v_s_overlap_c(int16_t *top, int16_t *bottom)
     }
 }
 
-static void vc1_h_s_overlap_c(int16_t *left, int16_t *right, ptrdiff_t left_stride, ptrdiff_t right_stride, int flags)
+static void vc1_h_s_overlap_c(int16_t *left, int16_t *right, int left_stride, int right_stride, int flags)
 {
     int i;
     int a, b, c, d;
@@ -147,7 +145,7 @@ static void vc1_h_s_overlap_c(int16_t *left, int16_t *right, ptrdiff_t left_stri
  * @return whether other 3 pairs should be filtered or not
  * @see 8.6
  */
-static av_always_inline int vc1_filter_line(uint8_t *src, ptrdiff_t stride, int pq)
+static av_always_inline int vc1_filter_line(uint8_t *src, int stride, int pq)
 {
     int a0 = (2 * (src[-2 * stride] - src[1 * stride]) -
               5 * (src[-1 * stride] - src[0 * stride]) + 4) >> 3;
@@ -196,7 +194,7 @@ static av_always_inline int vc1_filter_line(uint8_t *src, ptrdiff_t stride, int 
  * @param pq block quantizer
  * @see 8.6
  */
-static inline void vc1_loop_filter(uint8_t *src, int step, ptrdiff_t stride,
+static inline void vc1_loop_filter(uint8_t *src, int step, int stride,
                                    int len, int pq)
 {
     int i;
@@ -213,32 +211,32 @@ static inline void vc1_loop_filter(uint8_t *src, int step, ptrdiff_t stride,
     }
 }
 
-static void vc1_v_loop_filter4_c(uint8_t *src, ptrdiff_t stride, int pq)
+static void vc1_v_loop_filter4_c(uint8_t *src, int stride, int pq)
 {
     vc1_loop_filter(src, 1, stride, 4, pq);
 }
 
-static void vc1_h_loop_filter4_c(uint8_t *src, ptrdiff_t stride, int pq)
+static void vc1_h_loop_filter4_c(uint8_t *src, int stride, int pq)
 {
     vc1_loop_filter(src, stride, 1, 4, pq);
 }
 
-static void vc1_v_loop_filter8_c(uint8_t *src, ptrdiff_t stride, int pq)
+static void vc1_v_loop_filter8_c(uint8_t *src, int stride, int pq)
 {
     vc1_loop_filter(src, 1, stride, 8, pq);
 }
 
-static void vc1_h_loop_filter8_c(uint8_t *src, ptrdiff_t stride, int pq)
+static void vc1_h_loop_filter8_c(uint8_t *src, int stride, int pq)
 {
     vc1_loop_filter(src, stride, 1, 8, pq);
 }
 
-static void vc1_v_loop_filter16_c(uint8_t *src, ptrdiff_t stride, int pq)
+static void vc1_v_loop_filter16_c(uint8_t *src, int stride, int pq)
 {
     vc1_loop_filter(src, 1, stride, 16, pq);
 }
 
-static void vc1_h_loop_filter16_c(uint8_t *src, ptrdiff_t stride, int pq)
+static void vc1_h_loop_filter16_c(uint8_t *src, int stride, int pq)
 {
     vc1_loop_filter(src, stride, 1, 16, pq);
 }
@@ -1043,6 +1041,4 @@ av_cold void ff_vc1dsp_init(VC1DSPContext *dsp)
         ff_vc1dsp_init_x86(dsp);
     if (ARCH_MIPS)
         ff_vc1dsp_init_mips(dsp);
-    if (ARCH_LOONGARCH)
-        ff_vc1dsp_init_loongarch(dsp);
 }

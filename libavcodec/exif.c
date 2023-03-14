@@ -26,7 +26,6 @@
  */
 
 #include "exif.h"
-#include "tiff_common.h"
 
 
 static const char *exif_get_tag_name(uint16_t id)

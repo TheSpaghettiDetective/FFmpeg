@@ -29,7 +29,6 @@
 #include "libavutil/lfg.h"
 #include "libavutil/thread.h"
 #include "avcodec.h"
-#include "codec_internal.h"
 #include "get_bits.h"
 #include "internal.h"
 #include "mpegaudiodsp.h"
@@ -170,17 +169,18 @@ static av_cold int mpc8_decode_init(AVCodecContext * avctx)
     c->frames = 1 << (get_bits(&gb, 3) * 2);
 
     avctx->sample_fmt = AV_SAMPLE_FMT_S16P;
-    av_channel_layout_uninit(&avctx->ch_layout);
-    av_channel_layout_default(&avctx->ch_layout, channels);
+    avctx->channel_layout = (channels==2) ? AV_CH_LAYOUT_STEREO : AV_CH_LAYOUT_MONO;
+    avctx->channels = channels;
 
     ff_thread_once(&init_static_once, mpc8_init_static);
 
     return 0;
 }
 
-static int mpc8_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+static int mpc8_decode_frame(AVCodecContext * avctx, void *data,
                              int *got_frame_ptr, AVPacket *avpkt)
 {
+    AVFrame *frame     = data;
     const uint8_t *buf = avpkt->data;
     int buf_size = avpkt->size;
     MPCContext *c = avctx->priv_data;
@@ -358,7 +358,7 @@ static int mpc8_decode_frame(AVCodecContext *avctx, AVFrame *frame,
 
     ff_mpc_dequantize_and_synth(c, maxband - 1,
                                 (int16_t **)frame->extended_data,
-                                avctx->ch_layout.nb_channels);
+                                avctx->channels);
 
     c->cur_frame++;
 
@@ -383,17 +383,17 @@ static av_cold void mpc8_decode_flush(AVCodecContext *avctx)
     c->cur_frame = 0;
 }
 
-const FFCodec ff_mpc8_decoder = {
-    .p.name         = "mpc8",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Musepack SV8"),
-    .p.type         = AVMEDIA_TYPE_AUDIO,
-    .p.id           = AV_CODEC_ID_MUSEPACK8,
+AVCodec ff_mpc8_decoder = {
+    .name           = "mpc8",
+    .long_name      = NULL_IF_CONFIG_SMALL("Musepack SV8"),
+    .type           = AVMEDIA_TYPE_AUDIO,
+    .id             = AV_CODEC_ID_MUSEPACK8,
     .priv_data_size = sizeof(MPCContext),
     .init           = mpc8_decode_init,
-    FF_CODEC_DECODE_CB(mpc8_decode_frame),
+    .decode         = mpc8_decode_frame,
     .flush          = mpc8_decode_flush,
-    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
-    .p.sample_fmts  = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_S16P,
+    .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
+    .sample_fmts    = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_S16P,
                                                       AV_SAMPLE_FMT_NONE },
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

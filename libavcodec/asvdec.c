@@ -30,8 +30,6 @@
 #include "asv.h"
 #include "avcodec.h"
 #include "blockdsp.h"
-#include "codec_internal.h"
-#include "config_components.h"
 #include "idctdsp.h"
 #include "internal.h"
 #include "mpeg12data.h"
@@ -213,12 +211,13 @@ static inline void idct_put(ASV1Context *a, AVFrame *frame, int mb_x, int mb_y)
     }
 }
 
-static int decode_frame(AVCodecContext *avctx, AVFrame *p,
-                        int *got_frame, AVPacket *avpkt)
+static int decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
+                        AVPacket *avpkt)
 {
     ASV1Context *const a = avctx->priv_data;
     const uint8_t *buf = avpkt->data;
     int buf_size       = avpkt->size;
+    AVFrame *const p = data;
     int mb_x, mb_y, ret;
 
     if (buf_size * 8LL < a->mb_height * a->mb_width * 13LL)
@@ -328,30 +327,30 @@ static av_cold int decode_end(AVCodecContext *avctx)
 }
 
 #if CONFIG_ASV1_DECODER
-const FFCodec ff_asv1_decoder = {
-    .p.name         = "asv1",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("ASUS V1"),
-    .p.type         = AVMEDIA_TYPE_VIDEO,
-    .p.id           = AV_CODEC_ID_ASV1,
+AVCodec ff_asv1_decoder = {
+    .name           = "asv1",
+    .long_name      = NULL_IF_CONFIG_SMALL("ASUS V1"),
+    .type           = AVMEDIA_TYPE_VIDEO,
+    .id             = AV_CODEC_ID_ASV1,
     .priv_data_size = sizeof(ASV1Context),
     .init           = decode_init,
     .close          = decode_end,
-    FF_CODEC_DECODE_CB(decode_frame),
-    .p.capabilities = AV_CODEC_CAP_DR1,
+    .decode         = decode_frame,
+    .capabilities   = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };
 #endif
 
 #if CONFIG_ASV2_DECODER
-const FFCodec ff_asv2_decoder = {
-    .p.name         = "asv2",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("ASUS V2"),
-    .p.type         = AVMEDIA_TYPE_VIDEO,
-    .p.id           = AV_CODEC_ID_ASV2,
+AVCodec ff_asv2_decoder = {
+    .name           = "asv2",
+    .long_name      = NULL_IF_CONFIG_SMALL("ASUS V2"),
+    .type           = AVMEDIA_TYPE_VIDEO,
+    .id             = AV_CODEC_ID_ASV2,
     .priv_data_size = sizeof(ASV1Context),
     .init           = decode_init,
-    FF_CODEC_DECODE_CB(decode_frame),
-    .p.capabilities = AV_CODEC_CAP_DR1,
+    .decode         = decode_frame,
+    .capabilities   = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };
 #endif

@@ -3,14 +3,13 @@ DESC    = FFmpeg device handling library
 
 HEADERS = avdevice.h                                                    \
           version.h                                                     \
-          version_major.h                                               \
 
 OBJS    = alldevices.o                                                  \
           avdevice.o                                                    \
           utils.o                                                       \
-          version.o                                                     \
 
 OBJS-$(HAVE_LIBC_MSVCRT)                 += file_open.o
+OBJS-$(CONFIG_SHARED)                    += reverse.o
 
 # input/output devices
 OBJS-$(CONFIG_ALSA_INDEV)                += alsa_dec.o alsa.o timefilter.o
@@ -48,15 +47,15 @@ OBJS-$(CONFIG_SNDIO_OUTDEV)              += sndio_enc.o sndio.o
 OBJS-$(CONFIG_V4L2_INDEV)                += v4l2.o v4l2-common.o timefilter.o
 OBJS-$(CONFIG_V4L2_OUTDEV)               += v4l2enc.o v4l2-common.o
 OBJS-$(CONFIG_VFWCAP_INDEV)              += vfwcap.o
+OBJS-$(CONFIG_VOUT_DRM_OUTDEV)           += drm_vout.o
+OBJS-$(CONFIG_VOUT_EGL_OUTDEV)           += egl_vout.o
+OBJS-$(CONFIG_VOUT_RPI_OUTDEV)           += rpi_vout.o
 OBJS-$(CONFIG_XCBGRAB_INDEV)             += xcbgrab.o
 OBJS-$(CONFIG_XV_OUTDEV)                 += xv.o
 
 # external libraries
 OBJS-$(CONFIG_LIBCDIO_INDEV)             += libcdio.o
 OBJS-$(CONFIG_LIBDC1394_INDEV)           += libdc1394.o
-
-# Objects duplicated from other libraries for shared builds
-SHLIBOBJS-$(CONFIG_DECKLINK_INDEV)       += reverse.o
 
 # Windows resource file
 SLIBOBJS-$(HAVE_GNU_WINDRES)             += avdeviceres.o
